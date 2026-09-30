@@ -1,0 +1,1 @@
+export default function SectionHeader({title,subtitle,action}){return <div className="section-header"><div><h3>{title}</h3>{subtitle&&<p>{subtitle}</p>}</div>{action}</div>}
