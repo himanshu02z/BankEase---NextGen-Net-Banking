@@ -4,54 +4,39 @@ import com.bankease.backend.dto.TransactionRequest;
 import com.bankease.backend.dto.TransactionResponse;
 import com.bankease.backend.dto.TransferRequest;
 import com.bankease.backend.entity.Transaction;
-import com.bankease.backend.service.JwtService;
 import com.bankease.backend.service.TransactionService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/transactions")
-@CrossOrigin(origins = "http://localhost:5173")
 public class TransactionController {
 
     private final TransactionService transactionService;
-    private final JwtService jwtService;
 
-    public TransactionController(
-            TransactionService transactionService,
-            JwtService jwtService
-    ) {
+    public TransactionController(TransactionService transactionService) {
         this.transactionService = transactionService;
-        this.jwtService = jwtService;
     }
 
     @PostMapping("/deposit/{accountNumber}")
-    public ResponseEntity<?> deposit(
+    public ResponseEntity<TransactionResponse> deposit(
             @PathVariable String accountNumber,
             @Valid @RequestBody TransactionRequest request,
-            @RequestHeader(
-                    value = "Authorization",
-                    required = false
-            ) String authorization
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-
-        String username = getUsername(authorization);
-
-        if (username == null) {
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body("Invalid or missing JWT");
-        }
 
         Transaction transaction =
                 transactionService.deposit(
                         accountNumber,
                         request,
-                        username
+                        userDetails.getUsername()
                 );
 
         return ResponseEntity
@@ -60,28 +45,17 @@ public class TransactionController {
     }
 
     @PostMapping("/withdraw/{accountNumber}")
-    public ResponseEntity<?> withdraw(
+    public ResponseEntity<TransactionResponse> withdraw(
             @PathVariable String accountNumber,
             @Valid @RequestBody TransactionRequest request,
-            @RequestHeader(
-                    value = "Authorization",
-                    required = false
-            ) String authorization
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-
-        String username = getUsername(authorization);
-
-        if (username == null) {
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body("Invalid or missing JWT");
-        }
 
         Transaction transaction =
                 transactionService.withdraw(
                         accountNumber,
                         request,
-                        username
+                        userDetails.getUsername()
                 );
 
         return ResponseEntity
@@ -90,27 +64,16 @@ public class TransactionController {
     }
 
     @GetMapping("/{accountNumber}")
-    public ResponseEntity<?> getTransactionHistory(
+    public ResponseEntity<List<TransactionResponse>> getTransactionHistory(
             @PathVariable String accountNumber,
-            @RequestHeader(
-                    value = "Authorization",
-                    required = false
-            ) String authorization
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-
-        String username = getUsername(authorization);
-
-        if (username == null) {
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body("Invalid or missing JWT");
-        }
 
         List<TransactionResponse> transactions =
                 transactionService
                         .getTransactionHistory(
                                 accountNumber,
-                                username
+                                userDetails.getUsername()
                         )
                         .stream()
                         .map(TransactionResponse::from)
@@ -120,58 +83,20 @@ public class TransactionController {
     }
 
     @PostMapping("/transfer/{senderAccountNumber}")
-    public ResponseEntity<?> transfer(
+    public ResponseEntity<Map<String, String>> transfer(
             @PathVariable String senderAccountNumber,
             @Valid @RequestBody TransferRequest request,
-            @RequestHeader(
-                    value = "Authorization",
-                    required = false
-            ) String authorization
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-
-        String username = getUsername(authorization);
-
-        if (username == null) {
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body("Invalid or missing JWT");
-        }
 
         transactionService.transfer(
                 senderAccountNumber,
                 request,
-                username
+                userDetails.getUsername()
         );
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body("Transfer successful");
-    }
-
-    private String getUsername(String authorization) {
-
-        if (authorization == null ||
-                !authorization.startsWith("Bearer ")) {
-            return null;
-        }
-
-        String token =
-                authorization.substring(7).trim();
-
-        if (token.isEmpty()) {
-            return null;
-        }
-
-        try {
-
-            if (!jwtService.isTokenValid(token)) {
-                return null;
-            }
-
-            return jwtService.extractUsername(token);
-
-        } catch (Exception e) {
-            return null;
-        }
+                .body(Map.of("message", "Transfer successful"));
     }
 }

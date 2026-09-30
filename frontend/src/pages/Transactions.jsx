@@ -1,3 +1,56 @@
-import {Download,Search,ArrowDownLeft,ArrowUpRight,Filter} from 'lucide-react';import {useState} from 'react';
-const data=[['Rahul Sharma','Fund transfer','30 Sep 2026, 09:42 AM','+₹8,500','credit'],['Amazon Pay','Shopping','29 Sep 2026, 06:15 PM','−₹2,499','debit'],['Electricity Board','Bill payment','28 Sep 2026, 10:20 AM','−₹1,240','debit'],['Priya Verma','Fund transfer','27 Sep 2026, 02:11 PM','+₹3,200','credit'],['Swiggy','Food & dining','26 Sep 2026, 08:30 PM','−₹680','debit'],['Salary Credit','Income','25 Sep 2026, 10:00 AM','+₹52,000','credit']];
-export default function Transactions(){const [q,setQ]=useState('');const rows=data.filter(x=>x.join(' ').toLowerCase().includes(q.toLowerCase()));return <div><div className="page-intro"><div><p className="eyebrow">ACCOUNT ACTIVITY</p><h1>Transactions</h1><p>Review and download your transaction history.</p></div><button className="outline-btn"><Download size={17}/> Export</button></div><div className="panel"><div className="toolbar"><div className="search"><Search size={17}/><input placeholder="Search transactions" value={q} onChange={e=>setQ(e.target.value)}/></div><button className="outline-btn"><Filter size={16}/> Filter</button><select><option>All transactions</option><option>Money received</option><option>Money spent</option></select></div><div className="table-wrap"><table><thead><tr><th>Transaction</th><th>Date</th><th>Type</th><th>Amount</th><th>Status</th></tr></thead><tbody>{rows.map((t,i)=><tr key={i}><td><div className="tx-name"><div className={'tx-avatar '+t[4]}>{t[4]==='credit'?<ArrowDownLeft size={17}/>:<ArrowUpRight size={17}/>}</div><div><b>{t[0]}</b><small>{t[1]}</small></div></div></td><td>{t[2]}</td><td>{t[4]==='credit'?'Credit':'Debit'}</td><td className={t[4]==='credit'?'amount credit':'amount'}>{t[3]}</td><td><span className="status success">Completed</span></td></tr>)}</tbody></table></div></div></div>}
+import { useEffect, useState } from 'react';
+import { Search } from 'lucide-react';
+import { useAccounts } from '../context/AccountsContext';
+import { transactionApi, errorMessage } from '../services/api';
+import { isCredit } from '../utils/format';
+import { TransactionTable } from './Dashboard';
+
+export default function Transactions() {
+  const { accounts } = useAccounts();
+  const [account, setAccount] = useState('');
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState('ALL');
+
+  useEffect(() => {
+    if (!account && accounts.length) setAccount(accounts[0].accountNumber);
+  }, [accounts, account]);
+
+  useEffect(() => {
+    if (!account) return;
+    setLoading(true);
+    setError('');
+    transactionApi
+      .history(account)
+      .then(({ data }) => setRows(data))
+      .catch((e) => setError(errorMessage(e)))
+      .finally(() => setLoading(false));
+  }, [account]);
+
+  const visible = rows
+    .filter((t) => filter === 'ALL' || (filter === 'CREDIT' ? isCredit(t.type) : !isCredit(t.type)))
+    .filter((t) => JSON.stringify(t).toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div>
+      <div className="page-intro"><div><p className="eyebrow">ACCOUNT ACTIVITY</p><h1>Transactions</h1><p>Review your transaction history.</p></div></div>
+      {error && <div className="alert error-alert">{error}</div>}
+      <div className="panel">
+        <div className="toolbar">
+          <select value={account} onChange={(e) => setAccount(e.target.value)}>
+            {accounts.map((a) => <option key={a.id} value={a.accountNumber}>{a.accountType} · {a.accountNumber}</option>)}
+          </select>
+          <div className="search"><Search size={17} /><input placeholder="Search transactions" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+            <option value="ALL">All transactions</option>
+            <option value="CREDIT">Money received</option>
+            <option value="DEBIT">Money spent</option>
+          </select>
+        </div>
+        {!accounts.length ? <p className="empty">No accounts yet.</p> : loading ? <p className="empty">Loading…</p> : <TransactionTable rows={visible} />}
+      </div>
+    </div>
+  );
+}

@@ -1,3 +1,108 @@
-import {ArrowUpRight,ArrowDownLeft,Send,Plus,WalletCards,TrendingUp,Eye,MoreHorizontal,CalendarDays} from 'lucide-react';import StatCard from '../components/StatCard';import SectionHeader from '../components/SectionHeader';
-const tx=[['Rahul Sharma','Fund transfer','+ ₹8,500','Today, 09:42 AM','credit'],['Amazon Pay','Shopping','− ₹2,499','Yesterday, 06:15 PM','debit'],['Electricity Board','Bill payment','− ₹1,240','28 Sep, 10:20 AM','debit'],['Priya Verma','Fund transfer','+ ₹3,200','27 Sep, 02:11 PM','credit']];
-export default function Dashboard(){return <div><div className="welcome"><div><p className="eyebrow">WEDNESDAY, 30 SEPTEMBER 2026</p><h1>Good morning, Himanshu <span>👋</span></h1><p>Here’s your financial overview for today.</p></div><button className="outline-btn"><CalendarDays size={17}/> September 2026</button></div><div className="stats-grid"><StatCard icon={WalletCards} label="Total balance" value="₹1,24,580.50" meta="Available balance"/><StatCard icon={ArrowUpRight} label="Money received" value="₹18,750" meta="+12.4% this month" up/><StatCard icon={ArrowDownLeft} label="Money spent" value="₹9,320" meta="−4.8% this month"/><StatCard icon={TrendingUp} label="Investments" value="₹86,400" meta="+₹4,250 returns" up/></div><div className="dashboard-grid"><div className="panel"><SectionHeader title="Quick actions" subtitle="Common banking services"/><div className="quick-grid"><a href="/transfer"><span className="quick-icon blue"><Send/></span><b>Send money</b><small>Transfer funds</small></a><a href="/bills"><span className="quick-icon purple"><Plus/></span><b>Pay a bill</b><small>Utilities & more</small></a><a href="/accounts"><span className="quick-icon green"><WalletCards/></span><b>My accounts</b><small>View balances</small></a><a href="/investments"><span className="quick-icon orange"><TrendingUp/></span><b>Invest</b><small>Grow your wealth</small></a></div></div><div className="panel balance-panel"><SectionHeader title="Primary account"/><div className="account-number">Savings Account <span>•••• 4821</span></div><div className="big-balance">₹1,24,580<small>.50</small></div><div className="balance-foot"><span>Available balance</span><button className="eye-btn"><Eye size={17}/></button></div></div></div><div className="panel"><SectionHeader title="Recent transactions" subtitle="Your latest account activity" action={<a className="text-link" href="/transactions">View all →</a>}/><div className="table-wrap"><table><thead><tr><th>Transaction</th><th>Date</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>{tx.map((t,i)=><tr key={i}><td><div className="tx-name"><div className={'tx-avatar '+t[4]}>{t[4]==='credit'?<ArrowDownLeft size={17}/>:<ArrowUpRight size={17}/>}</div><div><b>{t[0]}</b><small>{t[1]}</small></div></div></td><td>{t[3]}</td><td className={t[4]==='credit'?'amount credit':'amount'}>{t[2]}</td><td><span className="status success">Completed</span></td><td><button className="more"><MoreHorizontal size={18}/></button></td></tr>)}</tbody></table></div></div></div>}
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, ArrowDownLeft, Send, Plus, WalletCards, ReceiptText } from 'lucide-react';
+import StatCard from '../components/StatCard';
+import SectionHeader from '../components/SectionHeader';
+import { useAuth } from '../context/AuthContext';
+import { useAccounts } from '../context/AccountsContext';
+import { transactionApi, errorMessage } from '../services/api';
+import { formatINR, formatDate, maskAccount, isCredit, typeLabel } from '../utils/format';
+
+export default function Dashboard() {
+  const { user } = useAuth();
+  const { accounts, totalBalance, loading, error } = useAccounts();
+  const [recent, setRecent] = useState([]);
+  const [txError, setTxError] = useState('');
+  const primary = accounts[0];
+
+  useEffect(() => {
+    if (!primary) return;
+    transactionApi
+      .history(primary.accountNumber)
+      .then(({ data }) => setRecent(data.slice(0, 5)))
+      .catch((e) => setTxError(errorMessage(e)));
+  }, [primary]);
+
+  const received = recent.filter((t) => isCredit(t.type)).reduce((s, t) => s + Number(t.amount), 0);
+  const spent = recent.filter((t) => !isCredit(t.type)).reduce((s, t) => s + Number(t.amount), 0);
+
+  return (
+    <div>
+      <div className="welcome">
+        <div>
+          <p className="eyebrow">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase()}</p>
+          <h1>Hello, {user?.fullName?.split(' ')[0] || user?.username}</h1>
+          <p>Here’s your financial overview.</p>
+        </div>
+      </div>
+      {error && <div className="alert error-alert">{error}</div>}
+      <div className="stats-grid">
+        <StatCard icon={WalletCards} label="Total balance" value={loading ? '…' : formatINR(totalBalance)} meta={`${accounts.length} account(s)`} />
+        <StatCard icon={ArrowDownLeft} label="Recent credits" value={formatINR(received)} meta="Last 5 transactions" up />
+        <StatCard icon={ArrowUpRight} label="Recent debits" value={formatINR(spent)} meta="Last 5 transactions" />
+        <StatCard icon={ReceiptText} label="Primary account" value={primary ? maskAccount(primary.accountNumber) : '—'} meta={primary?.accountType || 'No account yet'} />
+      </div>
+      <div className="dashboard-grid">
+        <div className="panel">
+          <SectionHeader title="Quick actions" subtitle="Common banking services" />
+          <div className="quick-grid">
+            <Link to="/transfer"><span className="quick-icon blue"><Send /></span><b>Send money</b><small>Transfer funds</small></Link>
+            <Link to="/accounts"><span className="quick-icon green"><Plus /></span><b>Deposit / Withdraw</b><small>Manage balance</small></Link>
+            <Link to="/accounts"><span className="quick-icon purple"><WalletCards /></span><b>My accounts</b><small>View or open</small></Link>
+            <Link to="/transactions"><span className="quick-icon orange"><ReceiptText /></span><b>History</b><small>All transactions</small></Link>
+          </div>
+        </div>
+        <div className="panel balance-panel">
+          <SectionHeader title="Primary account" />
+          {primary ? (
+            <>
+              <div className="account-number">{primary.accountType} Account <span>{primary.accountNumber}</span></div>
+              <div className="big-balance">{formatINR(primary.balance)}</div>
+              <div className="balance-foot"><span>Available balance</span><span>IFSC {primary.ifscCode}</span></div>
+            </>
+          ) : (
+            <p className="account-number">{loading ? 'Loading…' : <>No account yet. <Link className="text-link" to="/accounts">Open one</Link></>}</p>
+          )}
+        </div>
+      </div>
+      <div className="panel">
+        <SectionHeader title="Recent transactions" subtitle="Latest activity on your primary account" action={<Link className="text-link" to="/transactions">View all →</Link>} />
+        {txError && <div className="alert error-alert">{txError}</div>}
+        <TransactionTable rows={recent} />
+      </div>
+    </div>
+  );
+}
+
+export function TransactionTable({ rows }) {
+  if (!rows.length) return <p className="empty">No transactions yet.</p>;
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead><tr><th>Transaction</th><th>Date</th><th>Reference</th><th>Amount</th><th>Balance after</th></tr></thead>
+        <tbody>
+          {rows.map((t) => {
+            const credit = isCredit(t.type);
+            return (
+              <tr key={t.id}>
+                <td>
+                  <div className="tx-name">
+                    <div className={'tx-avatar ' + (credit ? 'credit' : 'debit')}>{credit ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}</div>
+                    <div>
+                      <b>{typeLabel[t.type] || t.type}</b>
+                      <small>{t.description}{t.relatedAccountNumber ? ` · ${t.relatedAccountNumber}` : ''}</small>
+                    </div>
+                  </div>
+                </td>
+                <td>{formatDate(t.createdAt)}</td>
+                <td>{t.transactionReference}</td>
+                <td className={credit ? 'amount credit' : 'amount'}>{credit ? '+' : '−'} {formatINR(t.amount)}</td>
+                <td>{formatINR(t.balanceAfter)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}

@@ -4,51 +4,35 @@ import com.bankease.backend.dto.AccountResponse;
 import com.bankease.backend.dto.CreateAccountRequest;
 import com.bankease.backend.entity.Account;
 import com.bankease.backend.service.AccountService;
-import com.bankease.backend.service.JwtService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/accounts")
-@CrossOrigin(origins = "http://localhost:5173")
 public class AccountController {
 
     private final AccountService accountService;
-    private final JwtService jwtService;
 
-    public AccountController(
-            AccountService accountService,
-            JwtService jwtService
-    ) {
+    public AccountController(AccountService accountService) {
         this.accountService = accountService;
-        this.jwtService = jwtService;
     }
 
     @PostMapping
-    public ResponseEntity<?> createAccount(
+    public ResponseEntity<AccountResponse> createAccount(
             @Valid @RequestBody CreateAccountRequest request,
-            @RequestHeader(
-                    value = "Authorization",
-                    required = false
-            ) String authorization
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-
-        String username = getUsername(authorization);
-
-        if (username == null) {
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body("Invalid or missing JWT");
-        }
 
         Account account =
                 accountService.createAccount(
                         request,
-                        username
+                        userDetails.getUsername()
                 );
 
         return ResponseEntity
@@ -57,55 +41,17 @@ public class AccountController {
     }
 
     @GetMapping
-    public ResponseEntity<?> getMyAccounts(
-            @RequestHeader(
-                    value = "Authorization",
-                    required = false
-            ) String authorization
+    public ResponseEntity<List<AccountResponse>> getMyAccounts(
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-
-        String username = getUsername(authorization);
-
-        if (username == null) {
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body("Invalid or missing JWT");
-        }
 
         List<AccountResponse> accounts =
                 accountService
-                        .getMyAccounts(username)
+                        .getMyAccounts(userDetails.getUsername())
                         .stream()
                         .map(AccountResponse::from)
                         .toList();
 
         return ResponseEntity.ok(accounts);
-    }
-
-    private String getUsername(String authorization) {
-
-        if (authorization == null ||
-                !authorization.startsWith("Bearer ")) {
-            return null;
-        }
-
-        String token =
-                authorization.substring(7).trim();
-
-        if (token.isEmpty()) {
-            return null;
-        }
-
-        try {
-
-            if (!jwtService.isTokenValid(token)) {
-                return null;
-            }
-
-            return jwtService.extractUsername(token);
-
-        } catch (Exception e) {
-            return null;
-        }
     }
 }

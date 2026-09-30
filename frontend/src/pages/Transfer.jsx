@@ -1,3 +1,99 @@
-import {useState} from 'react';import {Send,UserRound,ArrowRight,CheckCircle2,ShieldCheck} from 'lucide-react';import Modal from '../components/Modal';
-const beneficiaries=[['Rahul Sharma','rahul@upi','RS'],['Priya Verma','priya@upi','PV'],['Aman Gupta','aman@upi','AG']];
-export default function Transfer(){const [selected,setSelected]=useState(beneficiaries[0]);const [amount,setAmount]=useState('');const [open,setOpen]=useState(false);const [done,setDone]=useState(false);const submit=e=>{e.preventDefault();setOpen(true)};const confirm=()=>{setOpen(false);setDone(true);setAmount('')};return <div><div className="page-intro"><div><p className="eyebrow">PAYMENTS</p><h1>Fund transfer</h1><p>Send money securely to a beneficiary.</p></div></div>{done&&<div className="success-banner"><CheckCircle2/> <div><b>Transfer initiated successfully</b><span>Transaction reference BE{Date.now().toString().slice(-8)}</span></div></div>}<div className="transfer-grid"><form className="panel transfer-form" onSubmit={submit}><div className="step"><span>1</span><div><h3>Choose beneficiary</h3><p>Select who you want to send money to.</p></div></div><div className="beneficiaries">{beneficiaries.map(b=><button type="button" className={selected[0]===b[0]?'beneficiary selected':'beneficiary'} key={b[0]} onClick={()=>setSelected(b)}><div className="benef-avatar">{b[2]}</div><div><b>{b[0]}</b><small>{b[1]}</small></div></button>)}</div><div className="add-beneficiary">+ Add new beneficiary</div><div className="step"><span>2</span><div><h3>Transfer details</h3><p>Enter the amount and payment note.</p></div></div><label>Amount<input className="amount-input" type="number" min="1" placeholder="₹ 0.00" value={amount} onChange={e=>setAmount(e.target.value)} required/></label><label>Payment note <span className="optional">Optional</span><input placeholder="e.g. Monthly expenses"/></label><button className="primary-btn full" type="submit">Review transfer <ArrowRight size={18}/></button></form><div className="panel transfer-side"><div className="side-icon"><ShieldCheck/></div><h3>Secure transfer</h3><p>Every transaction is protected by multiple layers of security.</p><ul><li>256-bit encrypted connection</li><li>Transaction PIN verification</li><li>Real-time fraud monitoring</li></ul><div className="balance-box"><span>Available balance</span><b>₹1,24,580.50</b></div></div></div><Modal open={open} onClose={()=>setOpen(false)} title="Confirm transfer"><div className="confirm"><div className="confirm-row"><span>To</span><b>{selected[0]}</b></div><div className="confirm-row"><span>Amount</span><strong>₹{Number(amount||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</strong></div><div className="confirm-row"><span>From</span><b>Savings •••• 4821</b></div><div className="confirm-pin"><label>Transaction PIN<input type="password" maxLength="4" placeholder="••••" required/></label></div><button className="primary-btn full" onClick={confirm}>Confirm & transfer <Send size={17}/></button></div></Modal></div>}
+import { useEffect, useState } from 'react';
+import { Send, ArrowRight, CheckCircle2, ShieldCheck } from 'lucide-react';
+import Modal from '../components/Modal';
+import { useAccounts } from '../context/AccountsContext';
+import { transactionApi, errorMessage } from '../services/api';
+import { formatINR } from '../utils/format';
+
+export default function Transfer() {
+  const { accounts, refresh } = useAccounts();
+  const [sender, setSender] = useState('');
+  const [receiver, setReceiver] = useState('');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState('');
+
+  useEffect(() => {
+    if (!sender && accounts.length) setSender(accounts[0].accountNumber);
+  }, [accounts, sender]);
+
+  const senderAccount = accounts.find((a) => a.accountNumber === sender);
+
+  const review = (e) => {
+    e.preventDefault();
+    setError('');
+    setDone('');
+    if (receiver.trim() === sender) {
+      setError('Sender and receiver accounts cannot be the same');
+      return;
+    }
+    setOpen(true);
+  };
+
+  const confirm = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await transactionApi.transfer(sender, {
+        receiverAccountNumber: receiver.trim(),
+        amount: Number(amount),
+        description: description || null,
+      });
+      setDone(`${formatINR(amount)} sent to ${receiver.trim()}`);
+      setReceiver('');
+      setAmount('');
+      setDescription('');
+      await refresh();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="page-intro"><div><p className="eyebrow">PAYMENTS</p><h1>Fund transfer</h1><p>Send money securely to any BankEase account.</p></div></div>
+      {done && <div className="success-banner"><CheckCircle2 /> <div><b>Transfer successful</b><span>{done}</span></div></div>}
+      {error && <div className="alert error-alert">{error}</div>}
+      {!accounts.length ? (
+        <div className="panel"><p className="empty">Open an account first to make transfers.</p></div>
+      ) : (
+        <div className="transfer-grid">
+          <form className="panel transfer-form" onSubmit={review}>
+            <div className="step"><span>1</span><div><h3>From account</h3><p>Choose the account to debit.</p></div></div>
+            <label>From
+              <select value={sender} onChange={(e) => setSender(e.target.value)}>
+                {accounts.map((a) => <option key={a.id} value={a.accountNumber}>{a.accountType} · {a.accountNumber} · {formatINR(a.balance)}</option>)}
+              </select>
+            </label>
+            <div className="step"><span>2</span><div><h3>Transfer details</h3><p>Enter receiver account number and amount.</p></div></div>
+            <label>Receiver account number<input value={receiver} onChange={(e) => setReceiver(e.target.value)} placeholder="12-digit account number" required /></label>
+            <label>Amount<input className="amount-input" type="number" min="0.01" step="0.01" placeholder="₹ 0.00" value={amount} onChange={(e) => setAmount(e.target.value)} required /></label>
+            <label>Payment note <span className="optional">Optional</span><input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Rent" /></label>
+            <button className="primary-btn full" type="submit">Review transfer <ArrowRight size={18} /></button>
+          </form>
+          <div className="panel transfer-side">
+            <div className="side-icon"><ShieldCheck /></div>
+            <h3>Secure transfer</h3>
+            <p>Debit and credit happen in a single database transaction with row-level locking.</p>
+            <ul><li>JWT-authenticated request</li><li>Ownership & balance checks</li><li>Atomic debit/credit records</li></ul>
+            <div className="balance-box"><span>Available balance</span><b>{formatINR(senderAccount?.balance)}</b></div>
+          </div>
+        </div>
+      )}
+      <Modal open={open} onClose={() => setOpen(false)} title="Confirm transfer">
+        <div className="confirm">
+          <div className="confirm-row"><span>From</span><b>{sender}</b></div>
+          <div className="confirm-row"><span>To</span><b>{receiver}</b></div>
+          <div className="confirm-row"><span>Amount</span><strong>{formatINR(amount)}</strong></div>
+          <button className="primary-btn full" onClick={confirm} disabled={busy}>{busy ? 'Processing…' : <>Confirm & transfer <Send size={17} /></>}</button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
