@@ -14,13 +14,10 @@ npm run dev
 Open the URL printed by Vite, normally http://localhost:5173.
 
 ## Backend connection
-The frontend is currently in demo mode for UI development. API helpers are in `src/services/api.js` and default to:
-`http://localhost:8080/api`
-
-To change it, create `.env`:
+The frontend talks to the Spring Boot backend (JWT auth). API helpers are in `src/services/api.js` and default to
+`http://localhost:8080/api`. To change it, create `.env`:
 ```env
 VITE_API_URL=http://localhost:8080/api
 ```
 
-## Demo login
-Any valid email/password works in the current UI demo. Replace `AuthContext.jsx` login logic with the Spring Boot JWT API when the backend is ready.
+Start the backend first (`cd backend && ./mvnw spring-boot:run`), then register a user from the login page and sign in.
