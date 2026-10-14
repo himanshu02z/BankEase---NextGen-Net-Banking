@@ -15,7 +15,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const url = error.config?.url || '';
-    const isAuthEndpoint = url.includes('/users/login') || url.includes('/users/register');
+    const isAuthEndpoint = url.includes('/login') || url.includes('/register') || url.includes('/signin') || url.includes('/signup');
     const isLoginPage = typeof window !== 'undefined' && window.location.pathname === '/login';
 
     if ((error.response?.status === 401 || error.response?.status === 403) && !isAuthEndpoint && !isLoginPage) {

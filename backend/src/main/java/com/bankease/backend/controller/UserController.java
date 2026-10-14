@@ -12,7 +12,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping({"/api/users", "/api/auth", "/api", "/users", "/auth"})
 public class UserController {
 
     private final UserService userService;
@@ -21,7 +21,7 @@ public class UserController {
         this.userService = userService;
     }
 
-    @PostMapping("/register")
+    @PostMapping({"/register", "/signup"})
     public ResponseEntity<UserResponse> registerUser(
             @Valid @RequestBody RegisterRequest request
     ) {
@@ -33,7 +33,7 @@ public class UserController {
                 .body(UserResponse.from(registeredUser));
     }
 
-    @GetMapping("/me")
+    @GetMapping({"/me", "/profile"})
     public ResponseEntity<UserResponse> getCurrentUser(
             @AuthenticationPrincipal UserDetails userDetails
     ) {

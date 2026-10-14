@@ -7,7 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping({"/api/users", "/api/auth", "/api", "/users", "/auth"})
 public class AuthController {
 
     private final AuthService authService;
@@ -16,7 +16,7 @@ public class AuthController {
         this.authService = authService;
     }
 
-    @PostMapping("/login")
+    @PostMapping({"/login", "/signin"})
     public ResponseEntity<AuthResponse> login(
             @RequestBody LoginRequest request
     ) {
