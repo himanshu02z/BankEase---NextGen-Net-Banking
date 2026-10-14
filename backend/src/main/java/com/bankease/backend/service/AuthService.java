@@ -6,6 +6,7 @@ import com.bankease.backend.dto.UserResponse;
 import com.bankease.backend.entity.User;
 import com.bankease.backend.repository.UserRepository;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.stereotype.Service;
 
@@ -28,17 +29,20 @@ public class AuthService {
 
     public AuthResponse login(LoginRequest request) {
 
+        String identifier = request.username() != null ? request.username().trim() : "";
+
+        User user = userRepository.findByUsername(identifier)
+                .or(() -> userRepository.findByEmail(identifier))
+                .orElseThrow(() ->
+                        new BadCredentialsException("Invalid username or password")
+                );
+
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
-                        request.username(),
+                        user.getUsername(),
                         request.password()
                 )
         );
-
-        User user = userRepository.findByUsername(request.username())
-                .orElseThrow(() ->
-                        new RuntimeException("User not found")
-                );
 
         String token = jwtService.generateToken(user.getUsername());
 

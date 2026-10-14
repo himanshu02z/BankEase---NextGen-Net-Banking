@@ -7,11 +7,12 @@ import com.bankease.backend.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/users")
-@CrossOrigin(origins = "http://localhost:5173")
 public class UserController {
 
     private final UserService userService;
@@ -30,5 +31,13 @@ public class UserController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(UserResponse.from(registeredUser));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<UserResponse> getCurrentUser(
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        User user = userService.findByUsername(userDetails.getUsername());
+        return ResponseEntity.ok(UserResponse.from(user));
     }
 }

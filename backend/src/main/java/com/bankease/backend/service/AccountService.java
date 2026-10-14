@@ -7,6 +7,7 @@ import com.bankease.backend.repository.AccountRepository;
 import com.bankease.backend.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.util.List;
 
@@ -42,7 +43,23 @@ public class AccountService {
                 .accountNumber(accountNumber)
                 .ifscCode("BNKE0000001")
                 .accountType(request.accountType())
-                .balance(java.math.BigDecimal.ZERO)
+                .balance(BigDecimal.ZERO)
+                .currency("INR")
+                .active(true)
+                .user(user)
+                .build();
+
+        return accountRepository.save(account);
+    }
+
+    public Account createDefaultAccountForUser(User user) {
+        String accountNumber = generateAccountNumber();
+
+        Account account = Account.builder()
+                .accountNumber(accountNumber)
+                .ifscCode("BNKE0000001")
+                .accountType(Account.AccountType.SAVINGS)
+                .balance(new BigDecimal("10000.00"))
                 .currency("INR")
                 .active(true)
                 .user(user)
@@ -58,7 +75,13 @@ public class AccountService {
                         new RuntimeException("User not found")
                 );
 
-        return accountRepository.findByUserId(user.getId());
+        List<Account> accounts = accountRepository.findByUserId(user.getId());
+        if (accounts.isEmpty()) {
+            Account defaultAccount = createDefaultAccountForUser(user);
+            return List.of(defaultAccount);
+        }
+
+        return accounts;
     }
 
     private String generateAccountNumber() {
