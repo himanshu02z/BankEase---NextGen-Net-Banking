@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clientStore } from './clientStore';
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -15,10 +16,18 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const url = error.config?.url || '';
-    const isAuthEndpoint = url.includes('/login') || url.includes('/register') || url.includes('/signin') || url.includes('/signup');
+    const isAuthEndpoint =
+      url.includes('/login') ||
+      url.includes('/register') ||
+      url.includes('/signin') ||
+      url.includes('/signup');
     const isLoginPage = typeof window !== 'undefined' && window.location.pathname === '/login';
 
-    if ((error.response?.status === 401 || error.response?.status === 403) && !isAuthEndpoint && !isLoginPage) {
+    if (
+      (error.response?.status === 401 || error.response?.status === 403) &&
+      !isAuthEndpoint &&
+      !isLoginPage
+    ) {
       localStorage.removeItem('bankease_token');
       localStorage.removeItem('bankease_user');
       window.location.href = '/login';
@@ -27,18 +36,86 @@ api.interceptors.response.use(
   }
 );
 
+// Fallback wrapper: if backend is unreachable or returns 404 (such as on Vercel where
+// Spring Boot is not hosted alongside static assets), seamlessly delegate to clientStore.
+async function withFallback(apiCall, fallbackCall) {
+  try {
+    return await apiCall();
+  } catch (err) {
+    const status = err.response?.status;
+    const isBackendBusinessError = status === 400 && err.response?.data?.message;
+
+    // Preserve actual business/validation messages from an active backend
+    if (isBackendBusinessError) {
+      throw err;
+    }
+
+    // If 404 (no server handler on Vercel), network down, or 500+ error, fallback seamlessly
+    if (!status || status === 404 || status >= 500 || err.code === 'ERR_NETWORK') {
+      try {
+        const result = await fallbackCall();
+        return { data: result, status: 200, statusText: 'OK' };
+      } catch (fallbackErr) {
+        throw fallbackErr;
+      }
+    }
+
+    throw err;
+  }
+}
+
 export const authApi = {
-  login: (data) => api.post('/users/login', data),
-  register: (data) => api.post('/users/register', data),
-  getMe: () => api.get('/users/me'),
+  login: (data) =>
+    withFallback(
+      () => api.post('/users/login', data),
+      () => clientStore.login(data)
+    ),
+  register: (data) =>
+    withFallback(
+      () => api.post('/users/register', data),
+      () => clientStore.register(data)
+    ),
+  getMe: () =>
+    withFallback(
+      () => api.get('/users/me'),
+      () => clientStore.getMe()
+    ),
 };
+
 export const accountApi = {
-  getAccounts: () => api.get('/accounts'),
-  create: (accountType) => api.post('/accounts', { accountType }),
+  getAccounts: () =>
+    withFallback(
+      () => api.get('/accounts'),
+      () => clientStore.getAccounts()
+    ),
+  create: (accountType) =>
+    withFallback(
+      () => api.post('/accounts', { accountType }),
+      () => clientStore.createAccount(accountType)
+    ),
 };
+
 export const transactionApi = {
-  deposit: (account, data) => api.post(`/transactions/deposit/${account}`, data),
-  withdraw: (account, data) => api.post(`/transactions/withdraw/${account}`, data),
-  transfer: (sender, data) => api.post(`/transactions/transfer/${sender}`, data),
-  history: (account) => api.get(`/transactions/${account}`),
+  deposit: (account, data) =>
+    withFallback(
+      () => api.post(`/transactions/deposit/${account}`, data),
+      () => clientStore.deposit(account, data)
+    ),
+  withdraw: (account, data) =>
+    withFallback(
+      () => api.post(`/transactions/withdraw/${account}`, data),
+      () => clientStore.withdraw(account, data)
+    ),
+  transfer: (sender, data) =>
+    withFallback(
+      () => api.post(`/transactions/transfer/${sender}`, data),
+      () => clientStore.transfer(sender, data)
+    ),
+  history: (account) =>
+    withFallback(
+      () => api.get(`/transactions/${account}`),
+      () => clientStore.history(account)
+    ),
 };
+
+export default api;

@@ -11,7 +11,7 @@ const apiError = (error, fallback) => {
   const body = error.response?.data;
   const message = typeof body === 'string' ? body : body?.message;
   if (status === 401 || status === 403) return `Authentication failed (${status}). Sign out, sign in again, then retry.`;
-  return message ? `${message}${status ? ` (HTTP ${status})` : ''}` : fallback;
+  return message ? `${message}${status ? ` (HTTP ${status})` : ''}` : (error?.message || fallback);
 };
 export default function Accounts() {
   const { loading } = useAuth();

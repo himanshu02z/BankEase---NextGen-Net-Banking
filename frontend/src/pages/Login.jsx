@@ -27,7 +27,8 @@ export default function Login() {
       nav('/', { replace: true });
     } catch (err) {
       console.error('Login/Register error:', err);
-      const msg = err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response?.data : '') || err.message || 'Could not sign in. Check your details and that the backend is running.';
+      const rawBody = typeof err.response?.data === 'string' && !err.response.data.trim().startsWith('<') ? err.response.data : '';
+      const msg = err.response?.data?.message || rawBody || err.message || 'Could not sign in. Check your details.';
       setError(msg);
       setBusy(false);
     }
