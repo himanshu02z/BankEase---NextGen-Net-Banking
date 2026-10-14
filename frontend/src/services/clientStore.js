@@ -1,8 +1,7 @@
 // Client-side persistent banking engine for standalone / Vercel deployment
-// Provides complete offline/serverless support with localStorage persistence
-// Ensures zero 404 errors when running without a live remote Java backend.
+// Provides strict authentication, account creation, and user isolation.
 
-const DB_KEY = 'bankease_local_db_v2';
+const DB_KEY = 'bankease_local_db_v3';
 
 const SEED_USERS = [
   {
@@ -123,9 +122,9 @@ function getDB() {
     console.warn('Could not read client db:', e);
   }
   const initial = {
-    users: SEED_USERS,
-    accounts: SEED_ACCOUNTS,
-    transactions: SEED_TRANSACTIONS,
+    users: [...SEED_USERS],
+    accounts: [...SEED_ACCOUNTS],
+    transactions: [...SEED_TRANSACTIONS],
   };
   saveDB(initial);
   return initial;
@@ -176,77 +175,71 @@ export const clientStore = {
     const db = getDB();
     const username = (details.username || '').trim();
     const email = (details.email || '').trim().toLowerCase();
-    const fullName = (details.fullName || username).trim();
-    const phone = (details.phone || '0000000000').trim();
+    const fullName = (details.fullName || '').trim();
+    const phone = (details.phone || '').trim();
     const password = details.password || '';
 
+    if (!fullName) throw new Error('Full name is required');
+    if (!email) throw new Error('Email address is required');
+    if (!phone) throw new Error('Phone number is required');
     if (!username) throw new Error('Username is required');
-    if (!email) throw new Error('Email is required');
     if (!password) throw new Error('Password is required');
 
-    let user = db.users.find(
+    // Strict registration check: username or email must not exist
+    const existingUser = db.users.find(
       (u) =>
         u.username.toLowerCase() === username.toLowerCase() ||
         u.email.toLowerCase() === email
     );
 
-    if (user) {
-      // Update existing user credentials & info
-      user.username = username;
-      user.email = email;
-      user.fullName = fullName;
-      user.phone = phone;
-      user.password = password;
-      user.active = true;
-    } else {
-      user = {
-        id: Date.now(),
-        username,
-        email,
-        fullName,
-        phone,
-        password,
-        role: 'CUSTOMER',
-        active: true,
-        createdAt: new Date().toISOString(),
-      };
-      db.users.push(user);
+    if (existingUser) {
+      throw new Error('An account with this username or email already exists. Please sign in.');
     }
 
-    // Ensure user has at least one savings bank account
-    let hasAccount = db.accounts.some((a) => a.userId === user.id);
-    if (!hasAccount) {
-      const newAccNum = generateAccountNumber(db.accounts);
-      const newAccount = {
-        id: Date.now() + 1,
-        accountNumber: newAccNum,
-        ifscCode: 'BNKE0000001',
-        accountType: 'SAVINGS',
-        balance: 10000.0,
-        currency: 'INR',
-        active: true,
-        userId: user.id,
-        createdAt: new Date().toISOString(),
-      };
-      db.accounts.push(newAccount);
+    const newUser = {
+      id: Date.now(),
+      username,
+      email,
+      fullName,
+      phone,
+      password,
+      role: 'CUSTOMER',
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    db.users.push(newUser);
 
-      db.transactions.push({
-        id: Date.now() + 2,
-        accountId: newAccount.id,
-        accountNumber: newAccNum,
-        type: 'DEPOSIT',
-        amount: 10000.0,
-        balanceAfter: 10000.0,
-        description: 'Welcome bonus credit on account opening',
-        relatedAccountNumber: null,
-        transactionReference: 'TXNWEL' + newAccNum.slice(-6),
-        createdAt: new Date().toISOString(),
-      });
-    }
+    // Auto-provision personal Savings account for the newly registered user
+    const newAccNum = generateAccountNumber(db.accounts);
+    const newAccount = {
+      id: Date.now() + 1,
+      accountNumber: newAccNum,
+      ifscCode: 'BNKE0000001',
+      accountType: 'SAVINGS',
+      balance: 10000.0,
+      currency: 'INR',
+      active: true,
+      userId: newUser.id,
+      createdAt: new Date().toISOString(),
+    };
+    db.accounts.push(newAccount);
+
+    db.transactions.push({
+      id: Date.now() + 2,
+      accountId: newAccount.id,
+      accountNumber: newAccNum,
+      type: 'DEPOSIT',
+      amount: 10000.0,
+      balanceAfter: 10000.0,
+      description: 'Welcome bonus credit on account opening',
+      relatedAccountNumber: null,
+      transactionReference: 'TXNWEL' + newAccNum.slice(-6),
+      createdAt: new Date().toISOString(),
+    });
 
     saveDB(db);
 
-    const safeUser = { ...user };
+    const safeUser = { ...newUser };
     delete safeUser.password;
     return safeUser;
   },
@@ -254,33 +247,25 @@ export const clientStore = {
   async login({ username, password }) {
     const db = getDB();
     const query = (username || '').trim().toLowerCase();
+    const pass = password || '';
 
-    let user = db.users.find(
+    if (!query) throw new Error('Username or email is required');
+    if (!pass) throw new Error('Password is required');
+
+    const user = db.users.find(
       (u) =>
         u.username.toLowerCase() === query ||
         u.email.toLowerCase() === query
     );
 
-    // If user not registered yet in client db, create them on the fly
+    // Strict rejection if user does not have an existing account
     if (!user) {
-      user = await clientStore.register({
-        username: query.includes('@') ? query.split('@')[0] : query,
-        email: query.includes('@') ? query : `${query}@bankease.local`,
-        fullName: query.includes('@') ? query.split('@')[0] : query,
-        phone: '1234567890',
-        password,
-      });
-      // reload db after register
-      return clientStore.login({ username, password });
+      throw new Error('Account does not exist. Please create an account first.');
     }
 
-    // Check password if provided
-    if (user.password && user.password !== password) {
-      // If user registered with a different password, verify
-      // For seed users or quick dev, accept matching password or allow login
-      if (password && user.password !== password) {
-        throw new Error('Invalid username or password');
-      }
+    // Strict password verification
+    if (user.password !== pass) {
+      throw new Error('Invalid username or password.');
     }
 
     const token = generateToken(user);
@@ -293,7 +278,11 @@ export const clientStore = {
     const current = getCurrentUserFromStorage();
     if (!current) throw new Error('Unauthenticated');
     const db = getDB();
-    const user = db.users.find((u) => u.id === current.id || u.username.toLowerCase() === current.username.toLowerCase());
+    const user = db.users.find(
+      (u) =>
+        u.id === current.id ||
+        u.username.toLowerCase() === (current.username || '').toLowerCase()
+    );
     if (!user) return current;
     const safeUser = { ...user };
     delete safeUser.password;
@@ -306,14 +295,15 @@ export const clientStore = {
     let userId = current?.id;
 
     if (!userId && current?.username) {
-      const match = db.users.find((u) => u.username.toLowerCase() === current.username.toLowerCase());
+      const match = db.users.find(
+        (u) => u.username.toLowerCase() === current.username.toLowerCase()
+      );
       if (match) userId = match.id;
     }
 
     let userAccounts = db.accounts.filter((a) => a.userId === userId);
 
     if (userAccounts.length === 0 && userId) {
-      // Auto-provision a savings account with ₹10,000
       const newAccNum = generateAccountNumber(db.accounts);
       const newAcc = {
         id: Date.now(),
@@ -446,7 +436,6 @@ export const clientStore = {
 
     let receiver = db.accounts.find((a) => a.accountNumber === cleanReceiver);
     if (!receiver) {
-      // Auto-create receiver account placeholder so external transfers work seamlessly
       receiver = {
         id: Date.now() + 50,
         accountNumber: cleanReceiver,
@@ -467,7 +456,6 @@ export const clientStore = {
     const ref = 'TXNTRF' + Date.now().toString().slice(-8);
     const now = new Date().toISOString();
 
-    // Debit transaction for sender
     db.transactions.push({
       id: Date.now(),
       accountId: sender.id,
@@ -481,7 +469,6 @@ export const clientStore = {
       createdAt: now,
     });
 
-    // Credit transaction for receiver
     db.transactions.push({
       id: Date.now() + 1,
       accountId: receiver.id,
