@@ -36,9 +36,30 @@ api.interceptors.response.use(
   }
 );
 
-// Fallback wrapper: if backend is unreachable or returns 404 (such as on Vercel where
-// Spring Boot is not hosted alongside static assets), seamlessly delegate to clientStore.
+// Determine environment
+const hasConfiguredBackend = Boolean(import.meta.env.VITE_API_URL);
+const isLocalhost =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1');
+
+// Only send HTTP network calls to backend if:
+// 1) An external backend URL is provided (e.g. Render / Railway via VITE_API_URL), or
+// 2) Running locally on localhost where Spring Boot backend is on port 8080.
+// On static production hosts like Vercel (without VITE_API_URL), execute immediately via clientStore
+// to avoid 404 / 405 Method Not Allowed errors on static assets.
+const shouldUseRemoteApi = hasConfiguredBackend || isLocalhost;
+
 async function withFallback(apiCall, fallbackCall) {
+  if (!shouldUseRemoteApi) {
+    try {
+      const result = await fallbackCall();
+      return { data: result, status: 200, statusText: 'OK' };
+    } catch (fallbackErr) {
+      throw fallbackErr;
+    }
+  }
+
   try {
     return await apiCall();
   } catch (err) {
@@ -50,8 +71,14 @@ async function withFallback(apiCall, fallbackCall) {
       throw err;
     }
 
-    // If 404 (no server handler on Vercel), network down, or 500+ error, fallback seamlessly
-    if (!status || status === 404 || status >= 500 || err.code === 'ERR_NETWORK') {
+    // Catch 404, 405 (Method Not Allowed), network error, or 500+ down
+    if (
+      !status ||
+      status === 404 ||
+      status === 405 ||
+      status >= 500 ||
+      err.code === 'ERR_NETWORK'
+    ) {
       try {
         const result = await fallbackCall();
         return { data: result, status: 200, statusText: 'OK' };
